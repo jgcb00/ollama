@@ -114,6 +114,11 @@ include(FetchContent)
 # Read pinned llama.cpp commit from version file (shared with Dockerfile)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../../LLAMA_CPP_VERSION" LLAMA_CPP_GIT_TAG)
 string(STRIP "${LLAMA_CPP_GIT_TAG}" LLAMA_CPP_GIT_TAG)
+# Olala/Dragon: llama.cpp is fetched from the jgcb00 fork, which carries the
+# Dragon architecture (Mamba3-MIMO, geodesic norm, latent MoE) on top of the
+# upstream tag Ollama pins. LLAMA_CPP_VERSION names a tag in that fork.
+set(OLLAMA_LLAMA_CPP_GIT_REPOSITORY "https://github.com/jgcb00/llama.cpp.git" CACHE STRING
+    "Git repository the pinned llama.cpp source is fetched from")
 
 # Allow local source override via environment variable (like OLLAMA_MLX_SOURCE)
 if(DEFINED ENV{OLLAMA_LLAMA_CPP_SOURCE})
@@ -180,7 +185,7 @@ set(LLAMA_SUBPROCESS OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
     llama_cpp
-    GIT_REPOSITORY "https://github.com/ggml-org/llama.cpp.git"
+    GIT_REPOSITORY "${OLLAMA_LLAMA_CPP_GIT_REPOSITORY}"
     GIT_TAG ${LLAMA_CPP_GIT_TAG}
     GIT_SHALLOW TRUE
     ${_ollama_compat_patch_cmd}

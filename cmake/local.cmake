@@ -112,6 +112,11 @@ if(NOT OLLAMA_HAVE_LLAMA_SERVER)
 else()
     file(READ "${CMAKE_SOURCE_DIR}/LLAMA_CPP_VERSION" OLLAMA_LLAMA_CPP_GIT_TAG)
     string(STRIP "${OLLAMA_LLAMA_CPP_GIT_TAG}" OLLAMA_LLAMA_CPP_GIT_TAG)
+    # Olala/Dragon: llama.cpp is fetched from the jgcb00 fork, which carries the
+    # Dragon architecture (Mamba3-MIMO, geodesic norm, latent MoE) on top of the
+    # upstream tag Ollama pins. LLAMA_CPP_VERSION names a tag in that fork.
+    set(OLLAMA_LLAMA_CPP_GIT_REPOSITORY "https://github.com/jgcb00/llama.cpp.git" CACHE STRING
+        "Git repository the pinned llama.cpp source is fetched from")
     include(${CMAKE_SOURCE_DIR}/llama/compat/compat.cmake)
     if(DEFINED FETCHCONTENT_SOURCE_DIR_LLAMA_CPP AND NOT "${FETCHCONTENT_SOURCE_DIR_LLAMA_CPP}" STREQUAL "")
         get_filename_component(OLLAMA_LLAMA_CPP_SOURCE_DIR
@@ -126,7 +131,7 @@ else()
     else()
         set(OLLAMA_LLAMA_CPP_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/llama_cpp-src")
         ExternalProject_Add(ollama-llama-cpp-source
-            GIT_REPOSITORY "https://github.com/ggml-org/llama.cpp.git"
+            GIT_REPOSITORY "${OLLAMA_LLAMA_CPP_GIT_REPOSITORY}"
             GIT_TAG ${OLLAMA_LLAMA_CPP_GIT_TAG}
             GIT_SHALLOW TRUE
             SOURCE_DIR ${OLLAMA_LLAMA_CPP_SOURCE_DIR}

@@ -17,6 +17,7 @@ func TestTemplateSupportsThinking(t *testing.T) {
 		{name: "separate reasoning field", tmpl: "content.split('</think>') reasoning_content", want: false},
 		{name: "special token reasoning", tmpl: "content.split('</think>') <SPECIAL_12>", want: false},
 		{name: "plain template", tmpl: "{{ content }}", want: false},
+		{name: "olala analysis channel", tmpl: "<|im_start|>assistant<|channel_start|>analysis<|content|>", want: true},
 	}
 
 	for _, tt := range tests {

@@ -8,10 +8,18 @@ import (
 
 // TemplateSupportsThinking reports whether a raw model chat template declares
 // thinking output. It recognizes templates that emit paired think tags and
-// templates that strip prior tagged reasoning; templates using a separate
-// reasoning_content field are not treated as tagged-thinking templates.
+// templates that strip prior tagged reasoning, plus Olala's analysis channel;
+// templates using a separate reasoning_content field are not treated as
+// tagged-thinking templates.
 func TemplateSupportsThinking(chatTemplate string) bool {
 	if strings.Contains(chatTemplate, "<think>") && strings.Contains(chatTemplate, "</think>") {
+		return true
+	}
+
+	// Olala (Dragon) reasons in a dedicated "analysis" channel. llama-server's
+	// olala chat parser returns it as reasoning_content, and think=false maps
+	// to the template's reasoning_effort "none".
+	if strings.Contains(chatTemplate, "<|channel_start|>analysis<|content|>") {
 		return true
 	}
 
