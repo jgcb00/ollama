@@ -38,6 +38,37 @@ fork's Olala chat parser. The `analysis` channel is returned as `thinking`, the
 `tools` channel as `tool_calls`. `think` maps to the template's
 `reasoning_effort` (`false` -> `none`, `"low"`/`"medium"`/`"high"` passed through).
 
+## Windows
+
+The `olala-windows` workflow (`.github/workflows/olala-windows.yml`) builds an
+x64 payload on every push to `olala`: CPU (all ggml-cpu variants, built with
+llvm-mingw clang) + CUDA 13 backend + `ollama.exe`. Download the
+`ollama-olala-windows-amd64` artifact from the run in the Actions tab.
+
+1. Unzip it, e.g. to `C:\ollama-olala` (`ollama.exe` next to `lib\ollama\`).
+2. If the official Ollama is installed, quit its tray app (it holds port
+   11434), or run this one elsewhere with `$env:OLLAMA_HOST="127.0.0.1:11500"`
+   in every PowerShell window that uses it. Both share
+   `%USERPROFILE%\.ollama\models` unless `OLLAMA_MODELS` is set.
+3. Start the server and import the GGUF:
+
+   ```powershell
+   cd C:\ollama-olala
+   .\ollama.exe serve          # keep this window open
+   # second window:
+   Set-Content Modelfile 'FROM C:\models\olala-dpo99k-q5_k_m.gguf'
+   .\ollama.exe create olala -f Modelfile
+   .\ollama.exe run olala
+   ```
+
+NVIDIA GPUs need a driver recent enough for CUDA 13 (R580 or newer); without
+one Ollama falls back to CPU. The Dragon ops exist for CPU, CUDA and Metal
+only, so no ROCm/Vulkan payload is built. To build locally instead: Visual
+Studio 2022 (Desktop C++), Go, CMake, Ninja, llvm-mingw in
+`C:\Program Files\`, the CUDA 13 toolkit for GPU, then from a VS Developer
+PowerShell with `$env:CMAKE_GENERATOR="Ninja"`:
+`.\scripts\build_windows.ps1 cpu cuda13 ollama` (output in `dist\windows-amd64`).
+
 ## Notes
 
 - Parallel requests (`OLLAMA_NUM_PARALLEL`) are supported; prefix caching
