@@ -1,0 +1,126 @@
+name: olala-windows
+
+# Builds a Windows x64 Ollama payload (CPU + CUDA 13) with the Olala/Dragon
+# llama.cpp fork pinned in LLAMA_CPP_VERSION, using the same build_windows.ps1
+# steps as the release workflow, and publishes it as a zip artifact laid out
+# like the official ollama-windows-amd64.zip (ollama.exe + lib\ollama\...).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [olala]
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CUDA_INSTALL: https://developer.download.nvidia.com/compute/cuda/13.0.0/local_installers/cuda_13.0.0_windows.exe
+
+jobs:
+  cpu:
+    runs-on: windows-2022
+    steps:
+      - name: Install system dependencies
+        run: |
+          choco install -y --no-progress ninja
+          Invoke-WebRequest -Uri "https://github.com/mstorsjo/llvm-mingw/releases/download/20240619/llvm-mingw-20240619-ucrt-x86_64.zip" -OutFile "${{ runner.temp }}\llvm-mingw-ucrt.zip"
+          Expand-Archive -Path ${{ runner.temp }}\llvm-mingw-ucrt.zip -DestinationPath "C:\Program Files\"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Build CPU llama-server and ollama.exe
+        run: |
+          Import-Module 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
+          Enter-VsDevShell -VsInstallPath 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise' -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -no_logo'
+          ./scripts/build_windows.ps1 cpu ollama
+          if (!(Test-Path dist\windows-amd64\ollama.exe)) { throw "missing ollama.exe" }
+          if (!(Test-Path dist\windows-amd64\lib\ollama\llama-server.exe)) { throw "missing llama-server.exe" }
+        env:
+          CMAKE_GENERATOR: Ninja
+      - name: Smoke test
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dist = Resolve-Path dist\windows-amd64
+          & "$dist\ollama.exe" --version
+          & "$dist\lib\ollama\llama-server.exe" --version
+          Get-ChildItem "$dist\lib\ollama" | Select-Object Name, Length | Format-Table -AutoSize
+          $env:OLLAMA_HOST = "127.0.0.1:11555"
+          $p = Start-Process -FilePath "$dist\ollama.exe" -ArgumentList "serve" -PassThru -RedirectStandardError serve.log
+          try {
+            for ($i = 0; $i -lt 30; $i++) {
+              try { $v = Invoke-RestMethod "http://127.0.0.1:11555/api/version"; break } catch { Start-Sleep 1 }
+            }
+            if (-not $v) { Get-Content serve.log; throw "ollama serve did not start" }
+            Write-Output "server version: $($v.version)"
+          } finally {
+            Stop-Process -Id $p.Id -Force
+          }
+          Get-Content serve.log | Select-String "inference compute|error" | Select-Object -First 10
+      - uses: actions/upload-artifact@v4
+        with:
+          name: payload-cpu
+          path: dist/windows-amd64
+
+  cuda13:
+    runs-on: windows-2022
+    steps:
+      - name: Install system dependencies
+        run: choco install -y --no-progress ninja
+      - id: cache-cuda
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA
+          key: ${{ env.CUDA_INSTALL }}
+      - name: Install CUDA 13.0
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ProgressPreference = 'SilentlyContinue'
+          if ("${{ steps.cache-cuda.outputs.cache-hit }}" -ne 'true') {
+            Invoke-WebRequest -Uri "$env:CUDA_INSTALL" -OutFile "install.exe"
+            $subpackages = @("cudart", "nvcc", "cublas", "cublas_dev", "crt", "nvvm", "nvptxcompiler") | Foreach-Object {"${_}_13.0"}
+            Start-Process -FilePath .\install.exe -ArgumentList (@("-s") + $subpackages) -NoNewWindow -Wait
+          }
+          $cudaPath = (Resolve-Path "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\*").path
+          echo "$cudaPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - if: ${{ !cancelled() && steps.cache-cuda.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA
+          key: ${{ env.CUDA_INSTALL }}
+      - uses: actions/checkout@v4
+      - name: Build CUDA 13 backend
+        run: |
+          Import-Module 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
+          Enter-VsDevShell -VsInstallPath 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise' -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -no_logo'
+          ./scripts/build_windows.ps1 cuda13
+          if (!(Test-Path dist\windows-amd64\lib\ollama\cuda_v13\ggml-cuda.dll)) { throw "missing ggml-cuda.dll" }
+        env:
+          CMAKE_GENERATOR: Ninja
+      - uses: actions/upload-artifact@v4
+        with:
+          name: payload-cuda13
+          path: dist/windows-amd64
+
+  package:
+    needs: [cpu, cuda13]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: payload-cpu
+          path: ollama-olala-windows-amd64
+      - uses: actions/download-artifact@v4
+        with:
+          name: payload-cuda13
+          path: ollama-olala-windows-amd64
+      - name: List payload
+        run: Get-ChildItem -Recurse ollama-olala-windows-amd64 | Select-Object FullName, Length | Format-Table -AutoSize
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ollama-olala-windows-amd64
+          path: ollama-olala-windows-amd64
